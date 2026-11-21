@@ -17,7 +17,7 @@
 // Run it the way the grader does:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? "/bot";
@@ -25,11 +25,32 @@ const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
+// Copy VIDEO.json, but only after proving it names a real TikTok video:
+// a placeholder or a mistyped address must fail here, loudly, instead of
+// sailing through to the gate and being refused there with no explanation.
+let parsed: unknown;
 try {
-  copyFileSync(join(BOT_DIR, "VIDEO.json"), join(OUTPUT_DIR, "VIDEO.json"));
+  parsed = JSON.parse(readFileSync(join(BOT_DIR, "VIDEO.json"), "utf8"));
 } catch (err) {
   console.error(
-    `VIDEO.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`,
+    `VIDEO.json could not be read from ${BOT_DIR}: ${(err as Error).message}`,
   );
   process.exit(1);
 }
+const url =
+  typeof parsed === "object" && parsed !== null
+    ? (parsed as Record<string, unknown>).url
+    : undefined;
+if (
+  typeof url !== "string" ||
+  !/^https:\/\/www\.tiktok\.com\/@[^/]+\/video\/\d+/.test(url)
+) {
+  console.error(
+    `VIDEO.json does not name a TikTok video URL (expected https://www.tiktok.com/@<handle>/video/<id>), got: ${JSON.stringify(url)}`,
+  );
+  process.exit(1);
+}
+writeFileSync(
+  join(OUTPUT_DIR, "VIDEO.json"),
+  JSON.stringify({ url }) + "\n",
+);
